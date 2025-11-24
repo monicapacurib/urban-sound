@@ -74,10 +74,10 @@ st.markdown("""
 def load_ml_models():
     """Load the trained model and preprocessing objects"""
     try:
-        model = load_model('urban_sound_classifier.h5')
-        label_encoder = joblib.load('label_encoder.pkl')
-        feature_scaler = joblib.load('feature_scaler.pkl')
-        class_info = joblib.load('class_info.pkl')
+        model = load_model('urban_sound_classifier (1).h5')
+        label_encoder = joblib.load('label_encoder (1).pkl')
+        feature_scaler = joblib.load('feature_scaler (1).pkl')
+        class_info = joblib.load('class_info (1).pkl')
         return model, label_encoder, feature_scaler, class_info
     except Exception as e:
         st.error(f"Error loading models: {e}")
