@@ -9,7 +9,6 @@ import librosa.display
 import tempfile
 import os
 from datetime import datetime
-import soundfile as sf
 
 # Set page config
 st.set_page_config(
@@ -67,14 +66,6 @@ st.markdown("""
         margin: 20px 0;
         background-color: #f8f9fa;
     }
-    .prediction-card {
-        border: 1px solid #ddd;
-        border-radius: 10px;
-        padding: 20px;
-        margin: 10px 0;
-        background: white;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -91,29 +82,21 @@ def load_ml_models():
         st.error(f"Error loading models: {e}")
         return None, None, None, None
 
-def extract_features_for_prediction(audio_path, n_mfcc=20, n_fft=2048, hop_length=512):
-    """Extract features from audio file for prediction - UPDATED for 20 MFCCs"""
+def extract_features_for_prediction(audio_path, n_mfcc=20):
+    """Extract features from audio file for prediction"""
     try:
-        SAMPLE_RATE = 22050
-        DURATION = 4
-        SAMPLES_PER_TRACK = SAMPLE_RATE * DURATION
+        # Load audio file
+        audio, sr = librosa.load(audio_path, sr=22050)
         
-        audio, sr = librosa.load(audio_path, sr=SAMPLE_RATE)
-        
-        # Ensure consistent length
-        if len(audio) > SAMPLES_PER_TRACK:
-            audio = audio[:SAMPLES_PER_TRACK]
+        # Ensure consistent length (4 seconds)
+        target_length = 22050 * 4
+        if len(audio) > target_length:
+            audio = audio[:target_length]
         else:
-            audio = np.pad(audio, (0, max(0, SAMPLES_PER_TRACK - len(audio))))
+            audio = np.pad(audio, (0, max(0, target_length - len(audio))))
         
-        # Extract MFCC features - NOW 20 coefficients
-        mfccs = librosa.feature.mfcc(
-            y=audio, 
-            sr=sr, 
-            n_mfcc=n_mfcc,  # 20 MFCCs instead of 13
-            n_fft=n_fft, 
-            hop_length=hop_length
-        )
+        # Extract MFCC features
+        mfccs = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=n_mfcc)
         
         # Return mean of MFCCs across time
         features = np.mean(mfccs.T, axis=0)
@@ -121,10 +104,8 @@ def extract_features_for_prediction(audio_path, n_mfcc=20, n_fft=2048, hop_lengt
         # Ensure we have exactly 20 features
         if len(features) != 20:
             if len(features) < 20:
-                # Pad with zeros if fewer than 20
                 features = np.pad(features, (0, 20 - len(features)))
             else:
-                # Truncate if more than 20
                 features = features[:20]
         
         return features
@@ -138,35 +119,33 @@ def create_audio_visualizations(audio_path):
     try:
         y, sr = librosa.load(audio_path, sr=22050)
         
-        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+        fig, axes = plt.subplots(2, 2, figsize=(12, 8))
         
         # Waveform
-        librosa.display.waveshow(y, sr=sr, ax=axes[0, 0], color='blue', alpha=0.7)
-        axes[0, 0].set_title('Audio Waveform', fontweight='bold')
+        librosa.display.waveshow(y, sr=sr, ax=axes[0, 0])
+        axes[0, 0].set_title('Audio Waveform')
         axes[0, 0].set_xlabel('Time (s)')
         axes[0, 0].set_ylabel('Amplitude')
         axes[0, 0].grid(True, alpha=0.3)
         
         # Spectrogram
         D = librosa.amplitude_to_db(np.abs(librosa.stft(y)), ref=np.max)
-        img = librosa.display.specshow(D, sr=sr, x_axis='time', y_axis='log', ax=axes[0, 1], cmap='viridis')
-        axes[0, 1].set_title('Spectrogram', fontweight='bold')
-        plt.colorbar(img, ax=axes[0, 1], format='%+2.0f dB')
+        librosa.display.specshow(D, sr=sr, x_axis='time', y_axis='log', ax=axes[0, 1])
+        axes[0, 1].set_title('Spectrogram')
+        plt.colorbar(axes[0, 1].images[0], ax=axes[0, 1], format='%+2.0f dB')
         
         # Mel Spectrogram
-        S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128, fmax=8000)
+        S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128)
         S_dB = librosa.power_to_db(S, ref=np.max)
-        img = librosa.display.specshow(S_dB, sr=sr, x_axis='time', y_axis='mel', ax=axes[1, 0], cmap='magma')
-        axes[1, 0].set_title('Mel Spectrogram', fontweight='bold')
-        axes[1, 0].set_ylabel('Frequency (Hz)')
-        plt.colorbar(img, ax=axes[1, 0], format='%+2.0f dB')
+        librosa.display.specshow(S_dB, sr=sr, x_axis='time', y_axis='mel', ax=axes[1, 0])
+        axes[1, 0].set_title('Mel Spectrogram')
+        plt.colorbar(axes[1, 0].images[0], ax=axes[1, 0], format='%+2.0f dB')
         
-        # MFCCs (show all 20)
-        mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=20)  # Updated to 20
-        img = librosa.display.specshow(mfccs, x_axis='time', ax=axes[1, 1], cmap='coolwarm')
-        axes[1, 1].set_title('MFCC Coefficients (20)', fontweight='bold')  # Updated title
-        axes[1, 1].set_ylabel('MFCC')
-        plt.colorbar(img, ax=axes[1, 1])
+        # MFCCs
+        mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=20)
+        librosa.display.specshow(mfccs, x_axis='time', ax=axes[1, 1])
+        axes[1, 1].set_title('MFCC Coefficients')
+        plt.colorbar(axes[1, 1].images[0], ax=axes[1, 1])
         
         plt.tight_layout()
         return fig
@@ -176,7 +155,6 @@ def create_audio_visualizations(audio_path):
 
 def get_safety_assessment(class_name, safety_categories):
     """Get safety level and CSS class for a sound class"""
-    # Default safety mapping if not found in class_info
     default_safety_mapping = {
         'air_conditioner': ('NORMAL', 'safety-low'),
         'car_horn': ('TRAFFIC ALERT', 'safety-medium'),
@@ -190,14 +168,11 @@ def get_safety_assessment(class_name, safety_categories):
         'street_music': ('NORMAL', 'safety-low')
     }
     
-    # Try to get from class_info first, then use default
     if safety_categories and class_name in safety_categories:
         safety_info = safety_categories[class_name]
-        # Handle both string and tuple formats
         if isinstance(safety_info, tuple):
             return safety_info
         else:
-            # If it's just a string, determine CSS class
             if safety_info in ['HIGH SAFETY CONCERN', 'EMERGENCY VEHICLE']:
                 return safety_info, 'safety-high'
             elif safety_info in ['TRAFFIC ALERT', 'NOISE POLLUTION']:
@@ -205,60 +180,25 @@ def get_safety_assessment(class_name, safety_categories):
             else:
                 return safety_info, 'safety-low'
     else:
-        # Use default mapping
         return default_safety_mapping.get(class_name, ('UNKNOWN', 'safety-unknown'))
-
-def display_prediction_confidence(predictions, class_names, top_n=3):
-    """Display confidence scores for top predictions"""
-    st.subheader("🎯 Prediction Confidence Scores")
-    
-    # Get top N predictions
-    top_indices = np.argsort(predictions[0])[-top_n:][::-1]
-    
-    for i, idx in enumerate(top_indices):
-        class_name = class_names[idx]
-        confidence = predictions[0][idx]
-        
-        # Create progress bar for confidence
-        st.write(f"**{class_name.replace('_', ' ').title()}**")
-        st.progress(float(confidence))
-        st.write(f"Confidence: {confidence:.2%}")
-        st.write("---")
 
 def main():
     # Header
     st.markdown('<h1 class="main-header">🏙️ CommunitySoundscape</h1>', unsafe_allow_html=True)
     st.markdown("### AI-Powered Urban Sound Monitor for Public Safety")
-    st.markdown("---")
     
     # Load models
     model, label_encoder, feature_scaler, class_info = load_ml_models()
     if model is None:
-        st.error("🚨 Failed to load ML models. Please ensure all model files are properly uploaded.")
-        st.info("Required model files: urban_sound_classifier.h5, label_encoder.pkl, feature_scaler.pkl, class_info.pkl")
+        st.error("Failed to load ML models. Please check if all model files are uploaded.")
         return
     
-    # Display model info
-    st.sidebar.title("ℹ️ Model Info")
-    if class_info:
-        st.sidebar.write(f"**Sound Classes:** {len(class_info.get('classes', []))}")
-        st.sidebar.write(f"**MFCC Features:** 20")
-        st.sidebar.write(f"**Model Type:** CNN (No Pooling)")
-    
-    # Sidebar settings
-    st.sidebar.title("⚙️ Settings")
+    # Sidebar
+    st.sidebar.title("Settings")
     confidence_threshold = st.sidebar.slider(
-        "Confidence Threshold", 
-        min_value=0.1, 
-        max_value=0.9, 
-        value=0.6, 
-        step=0.1,
-        help="Higher values require more confidence in predictions"
+        "Confidence Threshold", 0.1, 0.9, 0.6, 0.1
     )
     
-    show_top_predictions = st.sidebar.checkbox("Show Top 3 Predictions", value=True)
-    
-    # Initialize session state for history
     if 'analysis_history' not in st.session_state:
         st.session_state.analysis_history = []
     
@@ -266,52 +206,35 @@ def main():
     col1, col2 = st.columns([1, 1])
     
     with col1:
-        st.subheader("🎤 Upload Audio for Analysis")
+        st.subheader("Upload Audio for Analysis")
         
-        # Enhanced file uploader with better UI
         st.markdown('<div class="upload-box">', unsafe_allow_html=True)
         uploaded_file = st.file_uploader(
-            "Drag and drop or click to upload audio file", 
-            type=['wav', 'mp3', 'flac', 'm4a', 'ogg'],
-            help="Upload urban sound recordings for safety analysis",
+            "Choose an audio file", 
+            type=['wav', 'mp3', 'm4a'],
             label_visibility="collapsed"
         )
         st.markdown('</div>', unsafe_allow_html=True)
         
         if uploaded_file is not None:
-            # Display file info
-            file_details = {
-                "Filename": uploaded_file.name,
-                "File size": f"{uploaded_file.size / 1024:.1f} KB",
-                "File type": uploaded_file.type
-            }
-            
-            st.write("📄 File Details:")
-            for key, value in file_details.items():
-                st.write(f"   • {key}: {value}")
-            
-            # Save uploaded file temporarily
+            # Save uploaded file
             with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_file:
                 tmp_file.write(uploaded_file.getvalue())
                 audio_path = tmp_file.name
             
-            # Display audio player
-            st.audio(uploaded_file.getvalue(), format='audio/wav')
+            # Display audio
+            st.audio(uploaded_file.getvalue())
             
-            # Analyze button
-            if st.button("🔍 Analyze Sound", type="primary", use_container_width=True):
-                with st.spinner("Analyzing audio features..."):
-                    # Extract features and predict
+            if st.button("Analyze Sound", type="primary"):
+                with st.spinner("Analyzing..."):
                     features = extract_features_for_prediction(audio_path)
                     
                     if features is not None:
-                        # Scale features
+                        # Scale and reshape features
                         features_scaled = feature_scaler.transform(features.reshape(1, -1))
-                        
-                        # Reshape for model (20 features, 1 channel)
                         features_reshaped = features_scaled.reshape(1, features_scaled.shape[1], 1)
                         
-                        # Make prediction
+                        # Predict
                         prediction = model.predict(features_reshaped, verbose=0)
                         confidence = np.max(prediction)
                         class_index = np.argmax(prediction)
@@ -321,194 +244,76 @@ def main():
                         safety_categories_dict = class_info.get('safety_categories', {}) if class_info else {}
                         safety_level, safety_class = get_safety_assessment(class_name, safety_categories_dict)
                         
-                        # Display main results in a card
-                        st.markdown('<div class="prediction-card">', unsafe_allow_html=True)
-                        st.subheader("📊 Analysis Results")
+                        # Display results
+                        st.subheader("Analysis Results")
                         
-                        # Results in columns
-                        result_col1, result_col2, result_col3 = st.columns(3)
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Detected Sound", class_name.replace('_', ' ').title())
+                        with col2:
+                            st.metric("Confidence", f"{confidence:.2%}")
+                        with col3:
+                            st.markdown(f'<div class="{safety_class}">{safety_level}</div>', unsafe_allow_html=True)
                         
-                        with result_col1:
-                            st.metric(
-                                "Detected Sound", 
-                                class_name.replace('_', ' ').title(),
-                                help="The type of urban sound detected"
-                            )
-                        
-                        with result_col2:
-                            st.metric(
-                                "Confidence", 
-                                f"{confidence:.2%}",
-                                delta=None,
-                                help="Model confidence in the prediction"
-                            )
-                        
-                        with result_col3:
-                            st.markdown(
-                                f'<div class="{safety_class}">{safety_level}</div>', 
-                                unsafe_allow_html=True
-                            )
-                        st.markdown('</div>', unsafe_allow_html=True)
-                        
-                        # Confidence warning
                         if confidence < confidence_threshold:
-                            st.warning(
-                                f"⚠️ Low confidence prediction (below {confidence_threshold:.0%}). "
-                                "This might be an unusual or ambiguous sound."
-                            )
+                            st.warning(f"Low confidence (below {confidence_threshold:.0%})")
                         
-                        # Show top predictions if enabled
-                        if show_top_predictions:
-                            display_prediction_confidence(prediction, label_encoder.classes_)
-                        
-                        # Create visualizations
-                        st.subheader("📈 Audio Analysis Visualizations")
+                        # Visualizations
+                        st.subheader("Audio Analysis")
                         fig = create_audio_visualizations(audio_path)
                         if fig:
                             st.pyplot(fig)
-                        else:
-                            st.error("Could not create audio visualizations")
                         
-                        # Log analysis
+                        # Log history
                         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        analysis_log = {
+                        st.session_state.analysis_history.append({
                             'timestamp': timestamp,
                             'sound_type': class_name,
                             'confidence': confidence,
                             'safety_level': safety_level,
                             'filename': uploaded_file.name
-                        }
-                        
-                        st.session_state.analysis_history.append(analysis_log)
+                        })
             
-            # Clean up temporary file
+            # Cleanup
             try:
                 os.unlink(audio_path)
             except:
                 pass
-        else:
-            # Show instructions when no file is uploaded
-            st.info("💡 **How to use:**")
-            st.write("1. Upload an audio file (WAV, MP3, FLAC, M4A, OGG)")
-            st.write("2. Click 'Analyze Sound' to process the audio")
-            st.write("3. View the AI analysis results and safety assessment")
-            st.write("4. Check the visualizations for detailed audio analysis")
-            
-            # Show supported sound types
-            if class_info and 'classes' in class_info:
-                st.subheader("🎵 Supported Sound Types")
-                classes = class_info['classes']
-                cols = st.columns(3)
-                for i, class_name in enumerate(classes):
-                    with cols[i % 3]:
-                        safety_level, safety_class = get_safety_assessment(class_name, class_info.get('safety_categories', {}))
-                        emoji = {
-                            'HIGH SAFETY CONCERN': '🔴',
-                            'EMERGENCY VEHICLE': '🔴',
-                            'TRAFFIC ALERT': '🟡',
-                            'NOISE POLLUTION': '🟠',
-                            'NORMAL': '🟢'
-                        }.get(safety_level, '⚪')
-                        st.write(f"{emoji} {class_name.replace('_', ' ').title()}")
     
     with col2:
-        st.subheader("🏙️ Urban Sound Dashboard")
+        st.subheader("Urban Sound Dashboard")
         
-        # Sound type distribution
-        st.markdown("**Urban Sound Categories**")
-        
-        # Get available classes
-        available_classes = label_encoder.classes_ if label_encoder else []
-        
-        if available_classes.any():
-            # Create safety mapping for visualization
-            safety_counts = {
-                'HIGH SAFETY CONCERN': 0,
-                'EMERGENCY VEHICLE': 0,
-                'TRAFFIC ALERT': 0,
-                'NOISE POLLUTION': 0,
-                'NORMAL': 0,
-                'UNKNOWN': 0
-            }
-            
-            # Count safety levels
-            for class_name in available_classes:
-                safety_level, _ = get_safety_assessment(class_name, class_info.get('safety_categories', {}) if class_info else {})
-                if safety_level in safety_counts:
-                    safety_counts[safety_level] += 1
-            
-            # Filter out zero counts
-            safety_counts = {k: v for k, v in safety_counts.items() if v > 0}
-            
-            # Create pie chart
-            if safety_counts:
-                fig, ax = plt.subplots(figsize=(8, 6))
-                colors = ['#ff6b6b', '#ff6b6b', '#ffd93d', '#ffd93d', '#6bcf7f', '#95a5a6']
-                wedges, texts, autotexts = ax.pie(
-                    list(safety_counts.values()), 
-                    labels=list(safety_counts.keys()),
-                    autopct='%1.1f%%',
-                    colors=colors[:len(safety_counts)],
-                    startangle=90
-                )
-                
-                # Style the pie chart
-                for autotext in autotexts:
-                    autotext.set_color('white')
-                    autotext.set_fontweight('bold')
-                
-                ax.set_title('Sound Safety Level Distribution', fontweight='bold')
-                st.pyplot(fig)
-        
-        # Analysis history
-        st.subheader("📋 Recent Analyses")
+        # Show recent analyses
+        st.subheader("Recent Analyses")
         if st.session_state.analysis_history:
-            recent_analyses = st.session_state.analysis_history[-5:]  # Last 5 analyses
-            
-            for analysis in reversed(recent_analyses):
+            for analysis in reversed(st.session_state.analysis_history[-3:]):
                 safety_class_map = {
                     'HIGH SAFETY CONCERN': 'safety-high',
                     'EMERGENCY VEHICLE': 'safety-high',
                     'TRAFFIC ALERT': 'safety-medium',
                     'NOISE POLLUTION': 'safety-medium',
-                    'TRAFFIC NOISE': 'safety-low',
-                    'NORMAL': 'safety-low',
-                    'UNKNOWN': 'safety-unknown'
+                    'NORMAL': 'safety-low'
                 }
-                
                 safety_class = safety_class_map.get(analysis['safety_level'], 'safety-unknown')
                 
                 st.markdown(f"""
-                <div style="border-left: 4px solid #1f77b4; padding: 10px; margin: 5px 0; background: #f8f9fa;">
+                <div style="border-left: 4px solid #1f77b4; padding: 10px; margin: 5px 0;">
                     <strong>{analysis['timestamp']}</strong><br>
-                    Sound: {analysis['sound_type'].replace('_', ' ').title()}<br>
-                    Confidence: {analysis['confidence']:.2%}<br>
-                    <div class="{safety_class}" style="margin-top: 5px; font-size: 0.9em;">
-                        {analysis['safety_level']}
-                    </div>
+                    {analysis['sound_type'].replace('_', ' ').title()} ({analysis['confidence']:.2%})<br>
+                    <div class="{safety_class}">{analysis['safety_level']}</div>
                 </div>
                 """, unsafe_allow_html=True)
         else:
-            st.info("No analyses yet. Upload an audio file to get started!")
+            st.info("No analyses yet")
         
-        # Safety guidelines
-        st.subheader("🚨 Safety Guidelines")
-        with st.expander("Understanding Safety Levels"):
-            st.markdown("""
-            - **🔴 HIGH SAFETY CONCERN**: Immediate attention required (gun shots, emergencies)
-            - **🟡 TRAFFIC ALERT**: Potential traffic issues (car horns, sirens)
-            - **🟠 NOISE POLLUTION**: Environmental concern (construction, drilling)
-            - **🟢 NORMAL**: Typical urban sounds (AC, street music, children)
-            - **⚪ UNKNOWN**: Unclassified or ambiguous sounds
-            """)
-    
-    # Footer
-    st.markdown("---")
-    st.markdown(
-        "**CommunitySoundscape** | UN SDG 11: Sustainable Cities and Communities | "
-        "Using AI for Urban Safety Monitoring | "
-        "Built with TensorFlow & Streamlit"
-    )
+        # Safety info
+        st.subheader("Safety Guidelines")
+        st.markdown("""
+        - 🔴 **HIGH SAFETY**: Gun shots, emergencies
+        - 🟡 **TRAFFIC ALERT**: Car horns, sirens  
+        - 🟠 **NOISE POLLUTION**: Construction, drilling
+        - 🟢 **NORMAL**: AC, music, children playing
+        """)
 
 if __name__ == "__main__":
     main()
