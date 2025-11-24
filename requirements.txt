@@ -1,2 +1,6 @@
 streamlit
-rich
+tensorflow
+scikit-learn
+librosa
+numpy
+joblib
