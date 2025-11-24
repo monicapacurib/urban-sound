@@ -97,7 +97,7 @@ def intelligent_classification(audio_features, class_names):
     # CAR HORN: High energy, medium frequency, brief
     horn_score = 0.0
     if energy > 0.1:  # High energy
-        if 1500 < centroid < 3500:  Medium frequency
+        if 1500 < centroid < 3500:  # Medium frequency
             horn_score = 0.7
     
     # DOG BARK: Medium energy, medium-high frequency, impulsive
@@ -122,6 +122,12 @@ def intelligent_classification(audio_features, class_names):
             if mfcc_std > 8:  # Some variation
                 jackhammer_score = 0.8
     
+    # SIREN: High energy, varying frequency (hard to detect without time analysis)
+    siren_score = 0.0
+    if energy > 0.08:  # High energy
+        if bandwidth > 2500:  # Very wide frequency range
+            siren_score = 0.6
+    
     # Assign scores to classes
     for class_name in class_names:
         class_lower = class_name.lower()
@@ -144,6 +150,8 @@ def intelligent_classification(audio_features, class_names):
             scores[class_name] = ac_score
         elif 'jackhammer' in class_lower:
             scores[class_name] = jackhammer_score
+        elif 'siren' in class_lower:
+            scores[class_name] = siren_score
         else:
             scores[class_name] = 0.1  # Default low probability
     
@@ -245,6 +253,8 @@ def main():
                                 emoji = "🚗"
                             elif 'dog' in class_name.lower():
                                 emoji = "🐶"
+                            elif 'siren' in class_name.lower():
+                                emoji = "🚨"
                             
                             st.success(f"{emoji} **Primary Prediction: {class_name}** ({prob*100:.1f}%)")
                     
