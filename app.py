@@ -155,6 +155,40 @@ def create_audio_visualizations(audio_path):
         st.error(f"Error creating visualizations: {e}")
         return None
 
+def get_safety_assessment(class_name, safety_categories):
+    """Get safety level and CSS class for a sound class"""
+    # Default safety mapping if not found in class_info
+    default_safety_mapping = {
+        'gun_shot': ('HIGH SAFETY CONCERN', 'safety-high'),
+        'siren': ('EMERGENCY VEHICLE', 'safety-high'),
+        'car_horn': ('TRAFFIC ALERT', 'safety-medium'),
+        'jackhammer': ('NOISE POLLUTION', 'safety-medium'),
+        'drilling': ('NOISE POLLUTION', 'safety-medium'),
+        'engine_idling': ('TRAFFIC NOISE', 'safety-low'),
+        'air_conditioner': ('NORMAL', 'safety-low'),
+        'street_music': ('NORMAL', 'safety-low'),
+        'children_playing': ('NORMAL', 'safety-low'),
+        'dog_bark': ('NORMAL', 'safety-low')
+    }
+    
+    # Try to get from class_info first, then use default
+    if safety_categories and class_name in safety_categories:
+        safety_info = safety_categories[class_name]
+        # Handle both string and tuple formats
+        if isinstance(safety_info, tuple):
+            return safety_info
+        else:
+            # If it's just a string, determine CSS class
+            if safety_info in ['HIGH SAFETY CONCERN', 'EMERGENCY VEHICLE']:
+                return safety_info, 'safety-high'
+            elif safety_info in ['TRAFFIC ALERT', 'NOISE POLLUTION']:
+                return safety_info, 'safety-medium'
+            else:
+                return safety_info, 'safety-low'
+    else:
+        # Use default mapping
+        return default_safety_mapping.get(class_name, ('UNKNOWN', 'safety-unknown'))
+
 def main():
     # Header
     st.markdown('<h1 class="main-header">🏙️ CommunitySoundscape</h1>', unsafe_allow_html=True)
@@ -167,6 +201,10 @@ def main():
         st.error("🚨 Failed to load ML models. Please ensure all model files are properly uploaded.")
         st.info("Required model files: urban_sound_classifier.h5, label_encoder.pkl, feature_scaler.pkl, class_info.pkl")
         return
+    
+    # Debug: Show loaded class info
+    if class_info:
+        st.sidebar.info(f"✅ Loaded {len(class_info.get('classes', []))} sound classes")
     
     # Sidebar
     st.sidebar.title("⚙️ Settings")
@@ -236,11 +274,9 @@ def main():
                         class_index = np.argmax(prediction)
                         class_name = label_encoder.classes_[class_index]
                         
-                        # Safety assessment
-                        safety_categories = class_info.get('safety_categories', {})
-                        safety_level, safety_class = safety_categories.get(
-                            class_name, ('UNKNOWN', 'safety-unknown')
-                        )
+                        # Safety assessment - FIXED VERSION
+                        safety_categories_dict = class_info.get('safety_categories', {}) if class_info else {}
+                        safety_level, safety_class = get_safety_assessment(class_name, safety_categories_dict)
                         
                         # Display results
                         st.subheader("📊 Analysis Results")
@@ -315,33 +351,52 @@ def main():
         # Sound type distribution
         st.markdown("**Urban Sound Categories**")
         
-        # Create a sample distribution chart
-        sound_types = list(class_info.get('safety_categories', {}).keys())
-        safety_levels = list(class_info.get('safety_categories', {}).values())
+        # Get available classes
+        available_classes = label_encoder.classes_ if label_encoder else []
         
-        # Count by safety level
-        safety_counts = {}
-        for level in safety_levels:
-            safety_counts[level] = safety_counts.get(level, 0) + 1
-        
-        # Create pie chart
-        fig, ax = plt.subplots(figsize=(8, 6))
-        colors = ['#ff6b6b', '#ffd93d', '#6bcf7f', '#95a5a6']
-        wedges, texts, autotexts = ax.pie(
-            list(safety_counts.values()), 
-            labels=list(safety_counts.keys()),
-            autopct='%1.1f%%',
-            colors=colors[:len(safety_counts)],
-            startangle=90
-        )
-        
-        # Style the pie chart
-        for autotext in autotexts:
-            autotext.set_color('white')
-            autotext.set_fontweight('bold')
-        
-        ax.set_title('Sound Safety Level Distribution', fontweight='bold')
-        st.pyplot(fig)
+        if available_classes.any():
+            # Create safety mapping for pie chart
+            safety_counts = {
+                'HIGH SAFETY CONCERN': 0,
+                'EMERGENCY VEHICLE': 0,
+                'TRAFFIC ALERT': 0,
+                'NOISE POLLUTION': 0,
+                'NORMAL': 0,
+                'UNKNOWN': 0
+            }
+            
+            # Count safety levels
+            for class_name in available_classes:
+                safety_level, _ = get_safety_assessment(class_name, class_info.get('safety_categories', {}) if class_info else {})
+                if safety_level in safety_counts:
+                    safety_counts[safety_level] += 1
+            
+            # Filter out zero counts
+            safety_counts = {k: v for k, v in safety_counts.items() if v > 0}
+            
+            # Create pie chart
+            if safety_counts:
+                fig, ax = plt.subplots(figsize=(8, 6))
+                colors = ['#ff6b6b', '#ff6b6b', '#ffd93d', '#ffd93d', '#6bcf7f', '#95a5a6']
+                wedges, texts, autotexts = ax.pie(
+                    list(safety_counts.values()), 
+                    labels=list(safety_counts.keys()),
+                    autopct='%1.1f%%',
+                    colors=colors[:len(safety_counts)],
+                    startangle=90
+                )
+                
+                # Style the pie chart
+                for autotext in autotexts:
+                    autotext.set_color('white')
+                    autotext.set_fontweight('bold')
+                
+                ax.set_title('Sound Safety Level Distribution', fontweight='bold')
+                st.pyplot(fig)
+            else:
+                st.info("No safety distribution data available")
+        else:
+            st.info("No sound classes loaded")
         
         # Analysis history
         st.subheader("📋 Recent Analyses")
